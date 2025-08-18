@@ -270,9 +270,11 @@ def _get_user_info_from_shufeng_token(sf_token: str) -> dict:
     # 调用数风接口获取用户信息
     # 可以通过环境变量配置数风API地址，默认使用localhost:8000
     shufeng_api_url = getattr(dify_config, 'SHUFENG_API_URL', 'http://beta.shufeng.cn:30080')
+    logging.info(f"shufeng_api_url: {shufeng_api_url}")
     api_url = f"{shufeng_api_url}/api/admin/getInfo"
     
     response = requests.get(api_url, headers=headers)
+    logging.info(f"shufeng_api_response: {response.text}")
     response.raise_for_status()
     
     data = response.json()

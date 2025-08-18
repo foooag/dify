@@ -23,7 +23,6 @@ const OAuthCallback = () => {
 
       try {
         setLoading(true)
-
         // 调用后端接口验证 sf_token 并获取 access_token
         const response = await verifyShufengToken({ sf_token: sfToken })
 
