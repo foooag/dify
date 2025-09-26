@@ -57,7 +57,7 @@ const SwrInitor = ({
           return
         }
         if (!((consoleToken && refreshToken) || (consoleTokenFromLocalStorage && refreshTokenFromLocalStorage))) {
-          const sfToken = localStorage.getItem('accessToken') || decodeURIComponent(searchParams.get('sf_token') || '')
+          const sfToken = decodeURIComponent(searchParams.get('sf_token') || '') || localStorage.getItem('accessToken')
           if (sfToken) {
             router.replace(`/oauth-callback?sf_token=${sfToken}&redirect_url=${pathname}`)
             return
@@ -70,7 +70,11 @@ const SwrInitor = ({
           refreshToken && localStorage.setItem('refresh_token', refreshToken)
           router.replace(pathname)
         }
-
+        if (searchParams.has('sf_token')) { // 如果本地存在登录信息 链接带sf_token 使用sf_token登录
+          const sfToken = decodeURIComponent(searchParams.get('sf_token') || '')
+          router.replace(`/oauth-callback?sf_token=${sfToken}&redirect_url=${pathname}`)
+          return
+        }
         setInit(true)
       }
       catch {
