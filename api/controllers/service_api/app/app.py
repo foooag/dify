@@ -1,15 +1,11 @@
-
 from typing import cast
 
-import flask_restful
-from flask_restful import Resource, marshal_with, reqparse
-from flask_restful import fields as fields_fields
+from flask_restx import Resource, fields, marshal_with, reqparse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from werkzeug.exceptions import Forbidden
 
-from controllers.common import fields
-from controllers.service_api import api
+from controllers.common.fields import build_parameters_model
+from controllers.service_api import service_api_ns
 from controllers.service_api.app.error import AppUnavailableError
 from controllers.service_api.wraps import get_app_model, validate_app_token, validate_sf_token
 from core.app.app_config.common.parameters_mapping import get_parameters_from_feature_dict
@@ -22,22 +18,35 @@ from services.app_service import AppService
 
 ALLOW_CREATE_APP_MODES = ["chat", "agent-chat", "advanced-chat", "workflow", "completion"]
 api_key_fields = {
-    "id": fields_fields.String,
-    "type": fields_fields.String,
-    "token": fields_fields.String,
+    "id": fields.String,
+    "type": fields.String,
+    "token": fields.String,
     "last_used_at": TimestampField,
     "created_at": TimestampField,
 }
 
 
+@service_api_ns.route("/parameters")
 class AppParameterApi(Resource):
     """Resource for app variables."""
 
+    @service_api_ns.doc("get_app_parameters")
+    @service_api_ns.doc(description="Retrieve application input parameters and configuration")
+    @service_api_ns.doc(
+        responses={
+            200: "Parameters retrieved successfully",
+            401: "Unauthorized - invalid API token",
+            404: "Application not found",
+        }
+    )
     @validate_app_token
-    @marshal_with(fields.parameters_fields)
+    @service_api_ns.marshal_with(build_parameters_model(service_api_ns))
     def get(self, app_model: App):
-        """Retrieve app parameters."""
-        if app_model.mode in {AppMode.ADVANCED_CHAT.value, AppMode.WORKFLOW.value}:
+        """Retrieve app parameters.
+
+        Returns the input form parameters and configuration for the application.
+        """
+        if app_model.mode in {AppMode.ADVANCED_CHAT, AppMode.WORKFLOW}:
             workflow = app_model.workflow
             if workflow is None:
                 raise AppUnavailableError()
@@ -56,32 +65,67 @@ class AppParameterApi(Resource):
         return get_parameters_from_feature_dict(features_dict=features_dict, user_input_form=user_input_form)
 
 
+@service_api_ns.route("/meta")
 class AppMetaApi(Resource):
+    @service_api_ns.doc("get_app_meta")
+    @service_api_ns.doc(description="Get application metadata")
+    @service_api_ns.doc(
+        responses={
+            200: "Metadata retrieved successfully",
+            401: "Unauthorized - invalid API token",
+            404: "Application not found",
+        }
+    )
     @validate_app_token
     def get(self, app_model: App):
-        """Get app meta"""
+        """Get app metadata.
+
+        Returns metadata about the application including configuration and settings.
+        """
         return AppService().get_app_meta(app_model)
 
 
+@service_api_ns.route("/info")
 class AppInfoApi(Resource):
+    @service_api_ns.doc("get_app_info")
+    @service_api_ns.doc(description="Get basic application information")
+    @service_api_ns.doc(
+        responses={
+            200: "Application info retrieved successfully",
+            401: "Unauthorized - invalid API token",
+            404: "Application not found",
+        }
+    )
     @validate_app_token
     def get(self, app_model: App):
-        """Get app information"""
+        """Get app information.
+
+        Returns basic information about the application including name, description, tags, and mode.
+        """
         tags = [tag.name for tag in app_model.tags]
-        return {"name": app_model.name, "description": app_model.description, "tags": tags, "mode": app_model.mode}
+        return {
+            "name": app_model.name,
+            "description": app_model.description,
+            "tags": tags,
+            "mode": app_model.mode,
+            "author_name": app_model.author_name,
+        }
 
 
+@service_api_ns.route("/app/<uuid:app_id>")
 class AppApi(Resource):
     @validate_sf_token
     @get_app_model
-    def delete(self,account,app_model):
-        print(account,app_model)
+    def delete(self, account, app_model):
         app_service = AppService()
         app_service.delete_app(app_model)
-        return { 'id': app_model.id }
+        return {'id': app_model.id}
+
+
+@service_api_ns.route("/app")
 class AppListApi(Resource):
     @validate_sf_token
-    def post(self,account):
+    def post(self, account):
         parser = reqparse.RequestParser()
         parser.add_argument("name", type=str, required=True, location="json")
         parser.add_argument("description", type=str, location="json")
@@ -93,11 +137,13 @@ class AppListApi(Resource):
     
         app_service = AppService()
         app = app_service.create_app(account.current_tenant.id, args, account)
-        return { 'id': app.id }
+        return {'id': app.id}
     
+
+@service_api_ns.route("/app/import")
 class AppImportApi(Resource):
     @validate_sf_token
-    def post(self,account):
+    def post(self, account):
         parser = reqparse.RequestParser()
         parser.add_argument("mode", type=str, required=True, location="json")
         parser.add_argument("yaml_content", type=str, location="json")
@@ -136,7 +182,9 @@ class AppImportApi(Resource):
         elif status == ImportStatus.PENDING.value:
             return result.model_dump(mode="json"), 202
         return result.model_dump(mode="json"), 200
-    
+
+
+@service_api_ns.route("/app/<uuid:resource_id>/api-keys")
 class AppApiKeyListResource(Resource):
     method_decorators = [validate_sf_token]
 
@@ -152,12 +200,12 @@ class AppApiKeyListResource(Resource):
         return resp
     
     @marshal_with(api_key_fields)
-    def post(self, account,resource_id):
+    def post(self, account, resource_id):
         assert self.resource_id_field is not None, "resource_id_field must be set"
         resource_id = str(resource_id)
         _get_resource(resource_id, account.current_tenant.id, self.resource_model)
         if not account.is_editor:
-            raise Forbidden()
+            raise AppUnavailableError()
 
         current_key_count = (
             db.session.query(ApiToken)
@@ -166,11 +214,7 @@ class AppApiKeyListResource(Resource):
         )
 
         if current_key_count >= self.max_keys:
-            flask_restful.abort(
-                400,
-                message=f"Cannot create more than {self.max_keys} API keys for this resource type.",
-                code="max_keys_exceeded",
-            )
+            raise AppUnavailableError()
 
         key = ApiToken.generate_api_key(self.token_prefix, 24)
         api_token = ApiToken()
@@ -182,6 +226,7 @@ class AppApiKeyListResource(Resource):
         db.session.commit()
         return api_token, 201
     
+
 def _get_resource(resource_id, tenant_id, resource_model):
     if resource_model == App:
         with Session(db.engine) as session:
@@ -195,14 +240,7 @@ def _get_resource(resource_id, tenant_id, resource_model):
             ).scalar_one_or_none()
 
     if resource is None:
-        flask_restful.abort(404, message=f"{resource_model.__name__} not found.")
+        raise AppUnavailableError()
 
     return resource
     
-api.add_resource(AppParameterApi, "/parameters")
-api.add_resource(AppMetaApi, "/meta")
-api.add_resource(AppInfoApi, "/info")
-api.add_resource(AppListApi, "/app")
-api.add_resource(AppImportApi, "/app/import")
-api.add_resource(AppApi, "/app/<uuid:app_id>")
-api.add_resource(AppApiKeyListResource, "/app/<uuid:resource_id>/api-keys")

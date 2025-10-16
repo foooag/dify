@@ -1,7 +1,7 @@
 'use client'
 import { useTheme } from 'next-themes'
 import { RiArrowRightUpLine } from '@remixicon/react'
-import { getPluginLinkInMarketplace } from '../utils'
+import { getPluginDetailLinkInMarketplace, getPluginLinkInMarketplace } from '../utils'
 import Card from '@/app/components/plugins/card'
 import CardMoreInfo from '@/app/components/plugins/card/card-more-info'
 import type { Plugin } from '@/app/components/plugins/types'
@@ -29,7 +29,7 @@ const CardWrapper = ({
     setFalse: hideInstallFromMarketplace,
   }] = useBoolean(false)
   const { locale: localeFromLocale } = useI18N()
-  const { tagsMap } = useTags(t)
+  const { getTagLabel } = useTags(t)
 
   if (showInstallButton) {
     return (
@@ -43,7 +43,7 @@ const CardWrapper = ({
           footer={
             <CardMoreInfo
               downloadCount={plugin.install_count}
-              tags={plugin.tags.map(tag => tagsMap[tag.name].label)}
+              tags={plugin.tags.map(tag => getTagLabel(tag.name))}
             />
           }
         />
@@ -83,7 +83,7 @@ const CardWrapper = ({
   return (
     <a
       className='group relative inline-block cursor-pointer rounded-xl'
-      href={getPluginLinkInMarketplace(plugin)}
+      href={getPluginDetailLinkInMarketplace(plugin)}
     >
       <Card
         key={plugin.name}
@@ -92,7 +92,7 @@ const CardWrapper = ({
         footer={
           <CardMoreInfo
             downloadCount={plugin.install_count}
-            tags={plugin.tags.map(tag => tagsMap[tag.name].label)}
+            tags={plugin.tags.map(tag => getTagLabel(tag.name))}
           />
         }
       />

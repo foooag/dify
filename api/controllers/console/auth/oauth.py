@@ -1,10 +1,9 @@
 import logging
-from datetime import UTC, datetime
-from typing import Optional
 
+import httpx
 import requests
 from flask import current_app, redirect, request
-from flask_restful import Resource
+from flask_restx import Resource
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from werkzeug.exceptions import Unauthorized
@@ -13,16 +12,20 @@ from configs import dify_config
 from constants.languages import languages
 from events.tenant_event import tenant_was_created
 from extensions.ext_database import db
+from libs.datetime_utils import naive_utc_now
 from libs.helper import extract_remote_ip
 from libs.oauth import GitHubOAuth, GoogleOAuth, OAuthUserInfo, ShufengOAuth
 from models import Account
 from models.account import AccountStatus
 from services.account_service import AccountService, RegisterService, TenantService
+from services.billing_service import BillingService
 from services.errors.account import AccountNotFoundError, AccountRegisterError
 from services.errors.workspace import WorkSpaceNotAllowedCreateError, WorkSpaceNotFoundError
 from services.feature_service import FeatureService
 
-from .. import api
+from .. import api, console_ns
+
+logger = logging.getLogger(__name__)
 
 
 def get_oauth_providers():
@@ -54,7 +57,14 @@ def get_oauth_providers():
         OAUTH_PROVIDERS = {"github": github_oauth, "google": google_oauth, "shufeng": shufeng_oauth}
         return OAUTH_PROVIDERS
 
+
+@console_ns.route("/oauth/login/<provider>")
 class OAuthLogin(Resource):
+    @api.doc("oauth_login")
+    @api.doc(description="Initiate OAuth login process")
+    @api.doc(params={"provider": "OAuth provider name (github/google)", "invite_token": "Optional invitation token"})
+    @api.response(302, "Redirect to OAuth authorization URL")
+    @api.response(400, "Invalid provider")
     def get(self, provider: str):
         invite_token = request.args.get("invite_token") or None
         OAUTH_PROVIDERS = get_oauth_providers()
@@ -67,7 +77,19 @@ class OAuthLogin(Resource):
         return redirect(auth_url)
 
 
+@console_ns.route("/oauth/authorize/<provider>")
 class OAuthCallback(Resource):
+    @api.doc("oauth_callback")
+    @api.doc(description="Handle OAuth callback and complete login process")
+    @api.doc(
+        params={
+            "provider": "OAuth provider name (github/google)",
+            "code": "Authorization code from OAuth provider",
+            "state": "Optional state parameter (used for invite token)",
+        }
+    )
+    @api.response(302, "Redirect to console with access token")
+    @api.response(400, "OAuth process failed")
     def get(self, provider: str):
         OAUTH_PROVIDERS = get_oauth_providers()
         with current_app.app_context():
@@ -81,16 +103,21 @@ class OAuthCallback(Resource):
         if state:
             invite_token = state
 
+        if not code:
+            return {"error": "Authorization code is required"}, 400
+
         try:
             token = oauth_provider.get_access_token(code)
             user_info = oauth_provider.get_user_info(token)
-        except requests.exceptions.RequestException as e:
-            error_text = e.response.text if e.response else str(e)
-            logging.exception(f"An error occurred during the OAuth process with {provider}: {error_text}")
+        except httpx.RequestError as e:
+            error_text = str(e)
+            if isinstance(e, httpx.HTTPStatusError):
+                error_text = e.response.text
+            logger.exception("An error occurred during the OAuth process with %s: %s", provider, error_text)
             return {"error": "OAuth process failed"}, 400
 
         if invite_token and RegisterService.is_valid_invite_token(invite_token):
-            invitation = RegisterService._get_invitation_by_token(token=invite_token)
+            invitation = RegisterService.get_invitation_by_token(token=invite_token)
             if invitation:
                 invitation_email = invitation.get("email", None)
                 if invitation_email != user_info.email:
@@ -116,7 +143,7 @@ class OAuthCallback(Resource):
 
         if account.status == AccountStatus.PENDING.value:
             account.status = AccountStatus.ACTIVE.value
-            account.initialized_at = datetime.now(UTC).replace(tzinfo=None)
+            account.initialized_at = naive_utc_now()
             db.session.commit()
 
         try:
@@ -139,8 +166,8 @@ class OAuthCallback(Resource):
         )
 
 
-def _get_account_by_openid_or_email(provider: str, user_info: OAuthUserInfo) -> Optional[Account]:
-    account: Optional[Account] = Account.get_by_openid(provider, user_info.id)
+def _get_account_by_openid_or_email(provider: str, user_info: OAuthUserInfo) -> Account | None:
+    account: Account | None = Account.get_by_openid(provider, user_info.id)
 
     if not account:
         with Session(db.engine) as session:
@@ -166,7 +193,15 @@ def _generate_account(provider: str, user_info: OAuthUserInfo):
 
     if not account:
         if not FeatureService.get_system_features().is_allow_register:
-            raise AccountNotFoundError()
+            if dify_config.BILLING_ENABLED and BillingService.is_email_in_freeze(user_info.email):
+                raise AccountRegisterError(
+                    description=(
+                        "This email account has been deleted within the past "
+                        "30 days and is temporarily unavailable for new account registration"
+                    )
+                )
+            else:
+                raise AccountRegisterError(description=("Invalid email or password"))
         account_name = user_info.name or "Dify"
         account = RegisterService.register(
             email=user_info.email, name=account_name, password=None, open_id=user_info.id, provider=provider
@@ -187,6 +222,7 @@ def _generate_account(provider: str, user_info: OAuthUserInfo):
     return account
 
 
+@console_ns.route("/oauth/shufeng/token")
 class ShufengTokenAuth(Resource):
     def post(self):
         """
@@ -204,7 +240,6 @@ class ShufengTokenAuth(Resource):
             # 调用数风接口获取用户信息
             user_info = _get_user_info_from_shufeng_token(sf_token)
             
-  
             user_info['email'] = f"{user_info.get('userName')}@dify.ai"
             # 转换为标准用户信息格式
             oauth_user_info = OAuthUserInfo(
@@ -270,11 +305,10 @@ def _get_user_info_from_shufeng_token(sf_token: str) -> dict:
     # 调用数风接口获取用户信息
     # 可以通过环境变量配置数风API地址，默认使用localhost:8000
     shufeng_api_url = getattr(dify_config, 'SHUFENG_API_URL', 'http://beta.shufeng.cn:30080')
-    logging.info(f"shufeng_api_url: {shufeng_api_url}")
+    logging.info("shufeng_api_url: %s", shufeng_api_url)
     api_url = f"{shufeng_api_url}/api/admin/getInfo"
     
     response = requests.get(api_url, headers=headers)
-    logging.info(f"shufeng_api_response: {response.text}")
     response.raise_for_status()
     
     data = response.json()
@@ -286,8 +320,3 @@ def _get_user_info_from_shufeng_token(sf_token: str) -> dict:
     user = result.get('user', {})
     
     return user
-
-
-api.add_resource(OAuthLogin, "/oauth/login/<provider>")
-api.add_resource(OAuthCallback, "/oauth/authorize/<provider>")
-api.add_resource(ShufengTokenAuth, "/oauth/shufeng/token")

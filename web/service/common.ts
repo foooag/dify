@@ -116,10 +116,7 @@ params: Record<string, any>
   return get<CommonResponse>(url, params)
 }
 
-export const fetchLanggeniusVersion: Fetcher<LangGeniusVersionResponse, {
- url: string;
-params: Record<string, any>
-}> = ({ url, params }) => {
+export const fetchLangGeniusVersion: Fetcher<LangGeniusVersionResponse, { url: string; params: Record<string, any> }> = ({ url, params }) => {
   return get<LangGeniusVersionResponse>(url, { params })
 }
 
@@ -188,6 +185,15 @@ body: Record<string, any>
 export const deleteMemberOrCancelInvitation: Fetcher<CommonResponse, { url: string }> = ({ url }) => {
   return del<CommonResponse>(url)
 }
+
+export const sendOwnerEmail = (body: { language?: string }) =>
+  post<CommonResponse & { data: string }>('/workspaces/current/members/send-owner-transfer-confirm-email', { body })
+
+export const verifyOwnerEmail = (body: { code: string; token: string }) =>
+  post<CommonResponse & { is_valid: boolean; email: string; token: string }>('/workspaces/current/members/owner-transfer-check', { body })
+
+export const ownershipTransfer = (memberID: string, body: { token: string }) =>
+  post<CommonResponse & { is_valid: boolean; email: string; token: string }>(`/workspaces/current/members/${memberID}/owner-transfer`, { body })
 
 export const fetchFilePreview: Fetcher<{ content: string }, { fileID: string }> = ({ fileID }) => {
   return get<{ content: string }>(`/files/${fileID}/preview`)
@@ -514,14 +520,8 @@ password_confirm: string
 }> = ({ url, body }) =>
   post<CommonResponse>(url, { body }, { isPublicAPI: true })
 
-export const uploadRemoteFileInfo = (url: string, isPublic?: boolean) => {
-  return post<{
- id: string;
-name: string;
-size: number;
-mime_type: string;
-url: string
-}>('/remote-files/upload', { body: { url } }, { isPublicAPI: isPublic })
+export const uploadRemoteFileInfo = (url: string, isPublic?: boolean, silent?: boolean) => {
+  return post<{ id: string; name: string; size: number; mime_type: string; url: string }>('/remote-files/upload', { body: { url } }, { isPublicAPI: isPublic, silent })
 }
 
 export const sendEMailLoginCode = (email: string, language = 'en-US') =>
@@ -621,3 +621,14 @@ export const verifyShufengToken = (body: { sf_token: string }) =>
  access_token: string;
 refresh_token: string
 }>('/oauth/shufeng/token', { body })
+export const sendVerifyCode = (body: { email: string; phase: string; token?: string }) =>
+  post<CommonResponse & { data: string }>('/account/change-email', { body })
+
+export const verifyEmail = (body: { email: string; code: string; token: string }) =>
+  post<CommonResponse & { is_valid: boolean; email: string; token: string }>('/account/change-email/validity', { body })
+
+export const resetEmail = (body: { new_email: string; token: string }) =>
+  post<CommonResponse>('/account/change-email/reset', { body })
+
+export const checkEmailExisted = (body: { email: string }) =>
+  post<CommonResponse>('/account/change-email/check-email-unique', { body }, { silent: true })

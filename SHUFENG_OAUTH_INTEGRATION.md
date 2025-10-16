@@ -50,7 +50,7 @@
 
 ### 前端文件 (Web)
 
-#### `web/app/oauth-callback/page.tsx`
+#### `web/app/sf-oauth-callback/page.tsx`
 
 **功能**:
 - 从URL参数获取`sf_token`和`redirect_url`
@@ -108,7 +108,7 @@ Content-Type: application/json
 
 1. **用户访问回调URL**:
    ```
-   GET /oauth-callback?sf_token=YOUR_TOKEN&redirect_url=/dashboard
+   GET /sf-oauth-callback?sf_token=YOUR_TOKEN&redirect_url=/dashboard
    ```
 
 2. **前端处理**:
@@ -143,7 +143,7 @@ python test_shufeng_oauth_api.py
 1. 确保Dify API服务运行在localhost:5001
 2. 确保Dify Web服务运行在localhost:3000
 3. 获取有效的数风token
-4. 访问: `http://localhost:3000/oauth-callback?sf_token=YOUR_TOKEN&redirect_url=/`
+4. 访问: `http://localhost:3000/sf-oauth-callback?sf_token=YOUR_TOKEN&redirect_url=/`
 
 ## 安全考虑
 

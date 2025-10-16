@@ -17,8 +17,11 @@ import type { NodePanelProps } from '@/app/components/workflow/types'
 import Tooltip from '@/app/components/base/tooltip'
 import Editor from '@/app/components/workflow/nodes/_base/components/prompt/editor'
 import StructureOutput from './components/structure-output'
+import ReasoningFormatConfig from './components/reasoning-format-config'
 import Switch from '@/app/components/base/switch'
 import { RiAlertFill, RiQuestionLine } from '@remixicon/react'
+import { fetchAndMergeValidCompletionParams } from '@/utils/completion-params'
+import Toast from '@/app/components/base/toast'
 
 const i18nPrefix = 'workflow.nodes.llm'
 
@@ -58,7 +61,8 @@ const Panel: FC<NodePanelProps<LLMNodeType>> = ({
     setStructuredOutputCollapsed,
     handleStructureOutputEnableChange,
     handleStructureOutputChange,
-    filterJinjia2InputVar,
+    filterJinja2InputVar,
+    handleReasoningFormatChange,
   } = useConfig(id, data)
 
   const model = inputs.model
@@ -68,10 +72,28 @@ const Panel: FC<NodePanelProps<LLMNodeType>> = ({
     modelId: string
     mode?: string
   }) => {
-    handleCompletionParamsChange({})
-    handleModelChanged(model)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    (async () => {
+      try {
+        const { params: filtered, removedDetails } = await fetchAndMergeValidCompletionParams(
+          model.provider,
+          model.modelId,
+          inputs.model.completion_params,
+          true,
+        )
+        const keys = Object.keys(removedDetails)
+        if (keys.length)
+          Toast.notify({ type: 'warning', message: `${t('common.modelProvider.parametersInvalidRemoved')}: ${keys.map(k => `${k} (${removedDetails[k]})`).join(', ')}` })
+        handleCompletionParamsChange(filtered)
+      }
+      catch {
+        Toast.notify({ type: 'error', message: t('common.error') })
+        handleCompletionParamsChange({})
+      }
+      finally {
+        handleModelChanged(model)
+      }
+    })()
+  }, [inputs.model.completion_params])
 
   return (
     <div className='mt-2'>
@@ -121,7 +143,7 @@ const Panel: FC<NodePanelProps<LLMNodeType>> = ({
           <ConfigPrompt
             readOnly={readOnly}
             nodeId={id}
-            filterVar={filterInputVar}
+            filterVar={isShowVars ? filterJinja2InputVar : filterInputVar}
             isChatModel={isChatModel}
             isChatApp={isChatMode}
             isShowContext
@@ -147,7 +169,7 @@ const Panel: FC<NodePanelProps<LLMNodeType>> = ({
               list={inputs.prompt_config?.jinja2_variables || []}
               onChange={handleVarListChange}
               onVarNameChange={handleVarNameChange}
-              filterVar={filterJinjia2InputVar}
+              filterVar={filterJinja2InputVar}
               isSupportFileVar={false}
             />
           </Field>
@@ -220,6 +242,14 @@ const Panel: FC<NodePanelProps<LLMNodeType>> = ({
           config={inputs.vision?.configs}
           onConfigChange={handleVisionResolutionChange}
         />
+
+        {/* Reasoning Format */}
+        <ReasoningFormatConfig
+          // Default to tagged for backward compatibility
+          value={inputs.reasoning_format || 'tagged'}
+          onChange={handleReasoningFormatChange}
+          readonly={readOnly}
+        />
       </div>
       <Split />
       <OutputVars
@@ -262,6 +292,11 @@ const Panel: FC<NodePanelProps<LLMNodeType>> = ({
             name='text'
             type='string'
             description={t(`${i18nPrefix}.outputVars.output`)}
+          />
+          <VarItem
+            name='usage'
+            type='object'
+            description={t(`${i18nPrefix}.outputVars.usage`)}
           />
           {inputs.structured_output_enabled && (
             <>

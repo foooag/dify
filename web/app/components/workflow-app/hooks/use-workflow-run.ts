@@ -20,7 +20,8 @@ import type { VersionHistory } from '@/types/workflow'
 import { noop } from 'lodash-es'
 import { useNodesSyncDraft } from './use-nodes-sync-draft'
 import { useInvalidAllLastRun } from '@/service/use-workflow'
-import useSetWorkflowVarsWithValue from './use-fetch-workflow-inspect-vars'
+import { useSetWorkflowVarsWithValue } from '../../workflow/hooks/use-fetch-workflow-inspect-vars'
+import { useConfigsMap } from './use-configs-map'
 
 export const useWorkflowRun = () => {
   const store = useStoreApi()
@@ -30,9 +31,13 @@ export const useWorkflowRun = () => {
   const { doSyncWorkflowDraft } = useNodesSyncDraft()
   const { handleUpdateWorkflowCanvas } = useWorkflowUpdate()
   const pathname = usePathname()
-  const appId = useAppStore.getState().appDetail?.id
-  const invalidAllLastRun = useInvalidAllLastRun(appId as string)
-  const { fetchInspectVars } = useSetWorkflowVarsWithValue()
+  const configsMap = useConfigsMap()
+  const { flowId, flowType } = configsMap
+  const invalidAllLastRun = useInvalidAllLastRun(flowType, flowId)
+
+  const { fetchInspectVars } = useSetWorkflowVarsWithValue({
+    ...configsMap,
+  })
 
   const {
     handleWorkflowStarted,
@@ -197,7 +202,7 @@ export const useWorkflowRun = () => {
           if (onWorkflowFinished)
             onWorkflowFinished(params)
           if (isInWorkflowDebug) {
-            fetchInspectVars()
+            fetchInspectVars({})
             invalidAllLastRun()
           }
         },
