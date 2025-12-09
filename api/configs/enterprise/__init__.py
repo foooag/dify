@@ -18,6 +18,7 @@ class EnterpriseFeatureConfig(BaseSettings):
         description="Allow customization of the enterprise logo.",
         default=False,
     )
+    
     SHUFENG_API_URL: str = Field(
         description="Shufeng API URL",
         default="http://beta.shufeng.cn:30080",
