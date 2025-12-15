@@ -1,9 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'next/navigation'
-import style from '../page.module.css'
 import Button from '@/app/components/base/button'
 import { API_PREFIX } from '@/config'
-import classNames from '@/utils/classnames'
 import { getPurifyHref } from '@/utils'
 
 type SocialAuthProps = {
@@ -22,7 +20,7 @@ export default function SocialAuth(props: SocialAuthProps) {
     return url
   }
   return <>
-    <div className='w-full'>
+    {/* <div className='w-full'>
       <a href={getOAuthLink('/oauth/login/github')}>
         <Button
           disabled={props.disabled}
@@ -54,6 +52,18 @@ export default function SocialAuth(props: SocialAuthProps) {
               )
             } />
             <span className="truncate leading-normal">{t('login.withGoogle')}</span>
+          </>
+        </Button>
+      </a>
+    </div> */}
+    <div className='w-full'>
+      <a href={getOAuthLink('/oauth/login/sf')}>
+        <Button
+          disabled={props.disabled}
+          className='w-full'
+        >
+          <>
+            <span className="truncate leading-normal">{t('login.withSSO')}</span>
           </>
         </Button>
       </a>

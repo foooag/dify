@@ -810,6 +810,26 @@ class AuthConfig(BaseSettings):
         description="Time (in seconds) a user must wait before retrying email register after exceeding the rate limit.",
         default=86400,
     )
+    SF_CLIENT_ID: str | None = Field(
+        description="SF OAuth client ID",
+        default=None,
+    )
+    SF_CLIENT_SECRET: str | None = Field(
+        description="SF OAuth client secret",
+        default=None,
+    )
+    SF_AUTH_URL: str | None = Field(
+        description="SF OAuth authorization URL",
+        default=None,
+    )
+    SF_TOKEN_URL: str | None = Field(
+        description="SF OAuth token URL",
+        default=None,
+    )
+    SF_USER_INFO_URL: str | None = Field(
+        description="SF OAuth user info URL",
+        default=None,
+    )
 
 
 class ModerationConfig(BaseSettings):

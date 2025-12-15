@@ -13,7 +13,7 @@ from events.tenant_event import tenant_was_created
 from extensions.ext_database import db
 from libs.datetime_utils import naive_utc_now
 from libs.helper import extract_remote_ip
-from libs.oauth import GitHubOAuth, GoogleOAuth, OAuthUserInfo
+from libs.oauth import GitHubOAuth, GoogleOAuth, OAuthUserInfo, SFOAuth
 from libs.token import (
     set_access_token_to_cookie,
     set_csrf_token_to_cookie,
@@ -49,8 +49,18 @@ def get_oauth_providers():
                 client_secret=dify_config.GOOGLE_CLIENT_SECRET,
                 redirect_uri=dify_config.CONSOLE_API_URL + "/console/api/oauth/authorize/google",
             )
-
-        OAUTH_PROVIDERS = {"github": github_oauth, "google": google_oauth}
+        if not dify_config.SF_CLIENT_ID or not dify_config.SF_CLIENT_SECRET:
+            sf_oauth = None
+        else:
+            sf_oauth = SFOAuth(
+                client_id=dify_config.SF_CLIENT_ID,
+                client_secret=dify_config.SF_CLIENT_SECRET,
+                redirect_uri=dify_config.CONSOLE_API_URL + "/console/api/oauth/authorize/sf",
+            )
+            sf_oauth._AUTH_URL = dify_config.SF_AUTH_URL
+            sf_oauth._TOKEN_URL = dify_config.SF_TOKEN_URL
+            sf_oauth._USER_INFO_URL = dify_config.SF_USER_INFO_URL
+        OAUTH_PROVIDERS = {"github": github_oauth, "google": google_oauth, "sf": sf_oauth}
         return OAUTH_PROVIDERS
 
 

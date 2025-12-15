@@ -130,3 +130,45 @@ class GoogleOAuth(OAuth):
 
     def _transform_user_info(self, raw_info: dict) -> OAuthUserInfo:
         return OAuthUserInfo(id=str(raw_info["sub"]), name="", email=raw_info["email"])
+
+
+class SFOAuth(OAuth):
+    _AUTH_URL = "http://localhost/login"
+    _TOKEN_URL = "http://localhost/api/admin/login/getTokenByCode"
+    _USER_INFO_URL = "http://localhost/api/admin/sso/getInfo"
+
+    def get_authorization_url(self, invite_token: str | None = None):
+        params = {
+            "client_id": self.client_id,
+            "response_type": "code",
+            "redirect_uri": self.redirect_uri,
+            "scope": "openid email",
+        }
+        if invite_token:
+            params["state"] = invite_token
+        return f"{self._AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+    def get_access_token(self, code: str):
+        data = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": self.redirect_uri,
+        }
+        headers = {"Accept": "application/json"}
+        response = httpx.post(self._TOKEN_URL, data=data, headers=headers)
+
+        response_json = response.json()
+        if not response_json.get("access_token"):
+            raise ValueError(f"数风登录失败: {response_json.get('message')}")
+        return response_json.get("access_token")
+
+    def get_raw_user_info(self, token: str):
+        headers = {"Authorization": f"Bearer {token}"}
+        response = httpx.get(self._USER_INFO_URL, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+    def _transform_user_info(self, raw_info: dict) -> OAuthUserInfo:
+        return OAuthUserInfo(id=str(raw_info["id"]), name=raw_info["nickname"], email=raw_info["email"])
