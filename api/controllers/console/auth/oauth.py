@@ -107,6 +107,7 @@ class OAuthCallback(Resource):
 
         code = request.args.get("code")
         state = request.args.get("state")
+        return_url = request.args.get("return_url")
         invite_token = None
         if state:
             invite_token = state
@@ -169,7 +170,7 @@ class OAuthCallback(Resource):
             ip_address=extract_remote_ip(request),
         )
 
-        response = redirect(f"{dify_config.CONSOLE_WEB_URL}")
+        response = redirect(return_url or f"{dify_config.CONSOLE_WEB_URL}")
 
         set_access_token_to_cookie(request, response, token_pair.access_token)
         set_refresh_token_to_cookie(request, response, token_pair.refresh_token)
