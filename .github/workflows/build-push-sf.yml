@@ -1,4 +1,4 @@
-name: Build and Push API & Web
+name: Build and Push API & Web SF
 
 on:
   push:
@@ -61,6 +61,11 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # 阿里云镜像加速器 https://6p1a5a2h.mirror.aliyuncs.com
+          config-inline: |
+            [registry."docker.io"]
+              mirrors = ["6p1a5a2h.mirror.aliyuncs.com"]
 
       - name: Extract metadata for Docker
         id: meta
