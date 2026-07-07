@@ -1,5 +1,5 @@
 # base image
-FROM node:22-alpine3.21 AS base
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/node:22-alpine3.21 AS base
 LABEL maintainer="takatost@gmail.com"
 
 # if you located in China, you can use aliyun mirror to speed up
